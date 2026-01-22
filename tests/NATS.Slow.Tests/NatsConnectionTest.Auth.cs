@@ -215,6 +215,22 @@ public abstract partial class NatsConnectionTest
                     },
                 }),
         };
+
+        yield return new object[]
+        {
+            new Auth(
+                "NKEY (with no_auth_user - AuthRequired false but Nonce present)",
+                "resources/configs/auth/nkey_with_no_auth_user.conf",
+                NatsOpts.Default with
+                {
+                    AuthOpts = NatsAuthOpts.Default with
+                    {
+                        NKey = "UALQSMXRSAA7ZXIGDDJBJ2JOYJVQIWM3LQVDM5KYIPG4EP3FAGJ47BOJ",
+                        Seed = "SUAAVWRZG6M5FA5VRRGWSCIHKTOJC7EWNIT4JV3FTOIPO4OBFR5WA7X5TE",
+                    },
+                },
+                anonymousConnectionAllowed: true),
+        };
     }
 
     [Theory]
@@ -245,10 +261,19 @@ public abstract partial class NatsConnectionTest
 
         _output.WriteLine("TRY ANONYMOUS CONNECTION");
         {
-            await using var failConnection = await server.CreateClientConnectionAsync(ignoreAuthorizationException: true);
-            var natsException =
-                await Assert.ThrowsAsync<NatsException>(async () => await failConnection.PublishAsync(subject, 0));
-            Assert.Contains("Authorization Violation", natsException.GetBaseException().Message);
+            await using var anonymousConnection = await server.CreateClientConnectionAsync(ignoreAuthorizationException: true);
+            if (!auth.AnonymousConnectionAllowed)
+            {
+                var natsException =
+                    await Assert.ThrowsAsync<NatsException>(async () => await anonymousConnection.PublishAsync(subject, 0));
+                Assert.Contains("Authorization Violation", natsException.GetBaseException().Message);
+            }
+            else
+            {
+                // When no_auth_user is configured, anonymous connections should succeed
+                await anonymousConnection.PublishAsync(subject, 0);
+                _output.WriteLine("Anonymous connection authorized (no_auth_user configured)");
+            }
         }
 
         await using var subConnection = await server.CreateClientConnectionAsync(clientOpts, useAuthInUrl: useAuthInUrl);
@@ -309,12 +334,13 @@ public abstract partial class NatsConnectionTest
 
     public class Auth
     {
-        public Auth(string name, string serverConfig, NatsOpts clientOpts, string? urlAuth = null)
+        public Auth(string name, string serverConfig, NatsOpts clientOpts, string? urlAuth = null, bool anonymousConnectionAllowed = false)
         {
             Name = name;
             ServerConfig = serverConfig;
             ClientOpts = clientOpts;
             UrlAuth = urlAuth;
+            AnonymousConnectionAllowed = anonymousConnectionAllowed;
         }
 
         public string Name { get; }
@@ -324,6 +350,8 @@ public abstract partial class NatsConnectionTest
         public NatsOpts ClientOpts { get; }
 
         public string? UrlAuth { get; }
+
+        public bool AnonymousConnectionAllowed { get; }
 
         public override string ToString() => Name;
     }

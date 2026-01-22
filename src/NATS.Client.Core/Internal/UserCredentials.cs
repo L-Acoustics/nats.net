@@ -136,7 +136,7 @@ internal class UserCredentials
             opts.AuthToken = Token;
         }
 
-        opts.Sig = info is { AuthRequired: true, Nonce: { } } ? Sign(info.Nonce, seed) : null;
+        opts.Sig = info is { Nonce: { } } ? Sign(info.Nonce, seed) : null;
     }
 
     private (string, string) LoadCredsContent(string creds)
